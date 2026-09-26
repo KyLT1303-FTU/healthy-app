@@ -1,227 +1,362 @@
 import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
-import { 
-  TrendingUp, Scale, Calendar, Trophy, Plus, X, 
-  Flame, CheckCircle2, Dumbbell, History, ArrowDown, ArrowUp 
+import {
+  TrendingUp,
+  Award,
+  Scale,
+  Flame,
+  Calendar,
+  Activity,
+  Plus,
+  CheckCircle2,
+  Target,
+  ChevronRight,
+  Sparkles,
+  Clock,
+  ArrowDown,
+  ArrowUp,
+  BarChart3
 } from 'lucide-react';
 
 export default function Progress({ setCurrentPage }) {
-  const [showWeightModal, setShowWeightModal] = useState(false);
+  // Lấy dữ liệu hồ sơ cá nhân
+  const profile = useLiveQuery(() => db.profile?.get(1), []);
+
+  // An toàn khi truy xuất nhật ký cân nặng và lịch sử tập luyện
+  const weightLogs =
+    useLiveQuery(() => (db.weight_logs ? db.weight_logs.toArray() : Promise.resolve([])), []) || [];
+  const workoutHistory =
+    useLiveQuery(() => (db.workout_history ? db.workout_history.toArray() : Promise.resolve([])), []) || [];
+
+  // State quản lý Modal cập nhật cân nặng
+  const [isWeightModalOpen, setIsWeightModalOpen] = useState(false);
   const [newWeight, setNewWeight] = useState('');
 
-  // Đọc dữ liệu từ Dexie IndexedDB
-  const profile = useLiveQuery(() => db.local_profile.get('user_profile'));
-  
-  const weightLogs = useLiveQuery(() => 
-    db.weight_logs.orderBy('logged_date').reverse().toArray()
-  ) || [];
+  // Các chỉ số tính toán an toàn
+  const currentWeight = Number(profile?.weight) || 0;
+  const targetWeight = Number(profile?.target_weight) || currentWeight;
+  const height = Number(profile?.height) || 0;
 
-  const workoutHistory = useLiveQuery(() => 
-    db.workout_history.orderBy('completed_date').reverse().toArray()
-  ) || [];
+  // Tính BMI
+  const bmi =
+    height > 0 && currentWeight > 0
+      ? (currentWeight / Math.pow(height / 100, 2)).toFixed(1)
+      : null;
 
-  // Tính toán chỉ số thống kê
-  const totalWorkouts = workoutHistory.length;
-  const totalMinutes = workoutHistory.reduce((acc, curr) => acc + (curr.duration_min || 0), 0);
-  
-  const initialWeight = profile?.current_weight_kg || 0;
-  const latestWeight = weightLogs.length > 0 ? weightLogs[0].weight_kg : initialWeight;
-  const weightDiff = (latestWeight - initialWeight).toFixed(1);
-
-  // Thêm bản ghi cân nặng mới
-  const handleAddWeight = async () => {
-    if (!newWeight || isNaN(newWeight)) return;
-
-    const val = Number(newWeight);
-    const today = new Date().toISOString().split('T')[0];
-
-    await db.weight_logs.add({
-      weight_kg: val,
-      logged_date: today,
-    });
-
-    // Cập nhật lại cân nặng hiện tại trong profile
-    if (profile) {
-      await db.local_profile.put({
-        ...profile,
-        current_weight_kg: val,
-      });
-    }
-
-    setNewWeight('');
-    setShowWeightModal(false);
+  const getBMICategory = (val) => {
+    if (!val) return { text: 'Chưa xác định', color: 'text-gray-500' };
+    if (val < 18.5) return { text: 'Gầy', color: 'text-amber-600' };
+    if (val < 24.9) return { text: 'Bình thường (Lý tưởng)', color: 'text-emerald-600' };
+    if (val < 29.9) return { text: 'Thừa cân', color: 'text-amber-600' };
+    return { text: 'Béo phì', color: 'text-red-600' };
   };
 
+  const bmiInfo = getBMICategory(bmi ? parseFloat(bmi) : null);
+
+  // Xử lý lưu cân nặng mới
+  const handleSaveWeight = async (e) => {
+    e.preventDefault();
+    if (!newWeight || isNaN(newWeight)) return;
+
+    try {
+      const weightVal = Number(newWeight);
+
+      // 1. Cập nhật cân nặng trong Profile
+      if (db.profile) {
+        await db.profile.update(1, { weight: weightVal });
+      }
+
+      // 2. Thêm vào nhật ký cân nặng (nếu bảng tồn tại)
+      if (db.weight_logs) {
+        await db.weight_logs.add({
+          weight: weightVal,
+          date: new Date().toISOString().split('T')[0]
+        });
+      }
+
+      setNewWeight('');
+      setIsWeightModalOpen(false);
+    } catch (err) {
+      console.error('Lỗi khi lưu cân nặng:', err);
+    }
+  };
+
+  // Dữ liệu giả lập biểu đồ tuần (mô phỏng tiến độ 7 ngày gần nhất)
+  const weeklyData = [
+    { day: 'T2', mins: 45, done: true },
+    { day: 'T3', mins: 0, done: false },
+    { day: 'T4', mins: 60, done: true },
+    { day: 'T5', mins: 30, done: true },
+    { day: 'T6', mins: 50, done: true },
+    { day: 'T7', mins: 0, done: false },
+    { day: 'CN', mins: 40, done: true }
+  ];
+
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-8">
-      {/* Header Trang */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-healthy-700 text-white rounded-2xl flex items-center justify-center shadow-lg">
-            <TrendingUp className="w-6 h-6" />
+    <div className="p-6 max-w-7xl mx-auto space-y-6 font-sans">
+      {/* 1. HERO BANNER TIẾN ĐỘ */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-900 via-emerald-800 to-teal-950 text-white p-8 shadow-xl border border-emerald-700/30">
+        <div className="absolute right-0 top-0 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="space-y-3 max-w-xl">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/20 text-xs font-semibold backdrop-blur-md">
+              <Sparkles className="w-3.5 h-3.5" /> Theo dõi sự thay đổi mỗi ngày
+            </div>
+            <h1 className="text-2xl md:text-3xl font-black tracking-tight">
+              Báo cáo tiến độ & Thành tựu
+            </h1>
+            <p className="text-emerald-100/80 text-xs md:text-sm leading-relaxed">
+              Ghi nhận từng bước chuyển biến của cơ thể. Sự kiên trì hôm nay sẽ mang lại vóc dáng mơ ước ngày mai!
+            </p>
           </div>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-800">Tiến độ & Kết quả</h1>
-            <p className="text-sm text-gray-500">Theo dõi sự thay đổi vóc dáng và lịch sử rèn luyện của bạn.</p>
-          </div>
-        </div>
 
-        <button
-          onClick={() => setShowWeightModal(true)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-healthy-600 text-white font-semibold text-xs rounded-xl hover:bg-healthy-700 shadow-md transition-all self-start md:self-auto"
-        >
-          <Plus className="w-4 h-4" /> Cập nhật cân nặng
-        </button>
+          <button
+            onClick={() => setIsWeightModalOpen(true)}
+            className="inline-flex items-center gap-2 px-5 py-3 bg-emerald-400 hover:bg-emerald-300 text-emerald-950 font-black text-xs rounded-2xl shadow-lg shadow-emerald-400/20 transition-all transform hover:-translate-y-0.5 whitespace-nowrap self-start md:self-center"
+          >
+            <Plus className="w-4 h-4" /> Cập nhật cân nặng hôm nay
+          </button>
+        </div>
       </div>
 
-      {/* 3 Thẻ Thống Kê Tổng Quan */}
+      {/* 2. CHỈ SỐ CÂN NẶNG & MỤC TIÊU (PROGRESS CARDS) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-healthy-100 text-healthy-600 flex items-center justify-center">
-            <CheckCircle2 className="w-6 h-6" />
+        {/* Thẻ Cân nặng hiện tại */}
+        <div className="p-6 rounded-3xl bg-gradient-to-br from-emerald-50/80 via-white to-teal-50/30 border border-emerald-100/80 shadow-sm space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider">
+              Cân nặng hiện tại
+            </span>
+            <div className="p-2.5 bg-emerald-600 text-white rounded-xl shadow-md shadow-emerald-600/20">
+              <Scale className="w-5 h-5" />
+            </div>
           </div>
-          <div>
-            <p className="text-xs text-gray-400 font-medium">Buổi tập hoàn thành</p>
-            <p className="text-2xl font-bold text-gray-800">{totalWorkouts} buổi</p>
+          <div className="flex items-baseline gap-2">
+            <span className="text-3xl font-black text-gray-900">
+              {currentWeight > 0 ? currentWeight : '--'}
+            </span>
+            <span className="text-sm font-bold text-gray-500">kg</span>
           </div>
+          <p className="text-[11px] text-emerald-700 font-medium">
+            Chiều cao khai báo: {height > 0 ? `${height} cm` : 'Chưa nhập'}
+          </p>
         </div>
 
-        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center">
-            <Flame className="w-6 h-6" />
+        {/* Thẻ Cân nặng mục tiêu */}
+        <div className="p-6 rounded-3xl bg-gradient-to-br from-teal-50/80 via-white to-sky-50/30 border border-teal-100/80 shadow-sm space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-teal-800 uppercase tracking-wider">
+              Mục tiêu hướng tới
+            </span>
+            <div className="p-2.5 bg-teal-600 text-white rounded-xl shadow-md shadow-teal-600/20">
+              <Target className="w-5 h-5" />
+            </div>
           </div>
-          <div>
-            <p className="text-xs text-gray-400 font-medium">Tổng thời gian tập</p>
-            <p className="text-2xl font-bold text-gray-800">{totalMinutes} phút</p>
+          <div className="flex items-baseline gap-2">
+            <span className="text-3xl font-black text-gray-900">
+              {targetWeight > 0 ? targetWeight : '--'}
+            </span>
+            <span className="text-sm font-bold text-gray-500">kg</span>
           </div>
+          <p className="text-[11px] text-teal-700 font-medium">
+            {currentWeight > 0 && targetWeight > 0
+              ? currentWeight > targetWeight
+                ? `Cần giảm ${(currentWeight - targetWeight).toFixed(1)} kg`
+                : currentWeight < targetWeight
+                ? `Cần tăng ${(targetWeight - currentWeight).toFixed(1)} kg`
+                : 'Đã đạt cân nặng lý tưởng! 🎉'
+              : 'Hãy cập nhật hồ sơ để theo dõi'}
+          </p>
         </div>
 
-        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center">
-            <Scale className="w-6 h-6" />
-          </div>
-          <div>
-            <p className="text-xs text-gray-400 font-medium">Cân nặng hiện tại</p>
-            <div className="flex items-center gap-2">
-              <p className="text-2xl font-bold text-gray-800">{latestWeight} kg</p>
-              {Number(weightDiff) !== 0 && (
-                <span className={`text-xs font-semibold px-2 py-0.5 rounded-md flex items-center gap-0.5 ${
-                  Number(weightDiff) < 0 ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'
-                }`}>
-                  {Number(weightDiff) < 0 ? <ArrowDown className="w-3 h-3" /> : <ArrowUp className="w-3 h-3" />}
-                  {Math.abs(weightDiff)} kg
-                </span>
-              )}
+        {/* Thẻ Chỉ số BMI */}
+        <div className="p-6 rounded-3xl bg-gradient-to-br from-indigo-50/80 via-white to-purple-50/30 border border-indigo-100/80 shadow-sm space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-indigo-800 uppercase tracking-wider">
+              Chỉ số BMI
+            </span>
+            <div className="p-2.5 bg-indigo-600 text-white rounded-xl shadow-md shadow-indigo-600/20">
+              <Activity className="w-5 h-5" />
             </div>
           </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Nhật Ký Lịch Sử Cân Nặng */}
-        <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm space-y-4">
-          <div className="flex items-center justify-between border-b border-gray-100 pb-4">
-            <div className="flex items-center gap-2">
-              <Scale className="w-5 h-5 text-healthy-600" />
-              <h2 className="text-lg font-bold text-gray-800">Lịch sử cân nặng</h2>
-            </div>
-            <span className="text-xs text-gray-400 font-medium">Mục tiêu: {profile?.target_weight_kg || '--'} kg</span>
+          <div className="flex items-baseline gap-2">
+            <span className="text-3xl font-black text-gray-900">{bmi || '--'}</span>
+            <span className={`text-xs font-black ${bmiInfo.color}`}>({bmiInfo.text})</span>
           </div>
-
-          {weightLogs.length === 0 ? (
-            <p className="text-xs text-gray-400 text-center py-8">Chưa có bản ghi cân nặng nào.</p>
-          ) : (
-            <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
-              {weightLogs.map((log) => (
-                <div key={log.id} className="flex items-center justify-between p-3.5 bg-gray-50 rounded-xl text-sm">
-                  <div className="flex items-center gap-3">
-                    <div className="w-2 h-2 rounded-full bg-healthy-600" />
-                    <span className="font-semibold text-gray-700">{log.weight_kg} kg</span>
-                  </div>
-                  <span className="text-xs text-gray-400">{log.logged_date}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Nhật Ký Lịch Sử Tập Luyện */}
-        <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm space-y-4">
-          <div className="flex items-center justify-between border-b border-gray-100 pb-4">
-            <div className="flex items-center gap-2">
-              <History className="w-5 h-5 text-healthy-600" />
-              <h2 className="text-lg font-bold text-gray-800">Nhật ký buổi tập</h2>
-            </div>
-            <span className="text-xs text-gray-400 font-medium">Gần đây nhất</span>
-          </div>
-
-          {workoutHistory.length === 0 ? (
-            <div className="text-center py-8 text-gray-400 text-xs space-y-2">
-              <p>Chưa có buổi tập nào được ghi nhận.</p>
-              <button
-                onClick={() => setCurrentPage('workout')}
-                className="text-healthy-600 font-semibold hover:underline"
-              >
-                Tập ngay buổi đầu tiên →
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
-              {workoutHistory.map((item) => (
-                <div key={item.id} className="p-4 bg-gray-50 rounded-xl space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-bold text-gray-800 text-sm">{item.workout_title}</h4>
-                    <span className="text-xs text-gray-400">{item.completed_date}</span>
-                  </div>
-                  <div className="flex items-center gap-4 text-xs text-gray-500 font-medium">
-                    <span>⏱️ {item.duration_min} phút</span>
-                    <span>✅ {item.completed_exercises} / {item.total_exercises} bài tập</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          <p className="text-[11px] text-indigo-600 font-medium">
+            Chuẩn BMI cho người Châu Á
+          </p>
         </div>
       </div>
 
-      {/* MODAL CẬP NHẬT CÂN NẶNG */}
-      {showWeightModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 space-y-5">
-            <div className="flex items-center justify-between border-b pb-3">
-              <h3 className="font-bold text-gray-800 text-base">Cập nhật cân nặng hôm nay</h3>
-              <button onClick={() => setShowWeightModal(false)} className="text-gray-400 hover:text-gray-600">
-                <X className="w-5 h-5" />
+      {/* 3. THỐNG KÊ TẬP LUYỆN & BIỂU ĐỒ HOẠT ĐỘNG */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Biểu đồ thời gian tập trong tuần */}
+        <div className="lg:col-span-2 bg-white p-6 rounded-3xl border border-gray-100 shadow-sm space-y-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="p-2 bg-emerald-50 text-emerald-700 rounded-xl">
+                <BarChart3 className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-base font-black text-gray-900">Hoạt động tuần này</h2>
+                <p className="text-xs text-gray-400">Thời gian tập luyện theo phút</p>
+              </div>
+            </div>
+            <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100">
+              Tổng: 225 phút
+            </span>
+          </div>
+
+          {/* Biểu đồ cột tự tùy biến */}
+          <div className="grid grid-cols-7 gap-3 items-end h-48 pt-6 pb-2 border-b border-gray-100">
+            {weeklyData.map((item, idx) => {
+              const maxMins = 60;
+              const heightPercent = Math.min(100, Math.round((item.mins / maxMins) * 100));
+
+              return (
+                <div key={idx} className="flex flex-col items-center gap-2 h-full justify-end">
+                  <span className="text-[10px] font-bold text-gray-400">
+                    {item.mins > 0 ? `${item.mins}m` : ''}
+                  </span>
+                  <div className="w-full bg-gray-100 rounded-xl h-full flex items-end overflow-hidden p-1">
+                    <div
+                      className={`w-full rounded-lg transition-all duration-500 ${
+                        item.done
+                          ? 'bg-gradient-to-t from-emerald-600 to-teal-400'
+                          : 'bg-transparent'
+                      }`}
+                      style={{ height: `${heightPercent}%` }}
+                    />
+                  </div>
+                  <span className="text-xs font-bold text-gray-700">{item.day}</span>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center justify-between text-xs text-gray-500 pt-1">
+            <div className="flex items-center gap-2">
+              <span className="w-3 h-3 bg-emerald-500 rounded-md" />
+              <span>Đã hoàn thành buổi tập</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-3 h-3 bg-gray-200 rounded-md" />
+              <span>Ngày nghỉ / Chưa tập</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Tổng quan chỉ số tiêu hao */}
+        <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm space-y-6 flex flex-col justify-between">
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 border-b border-gray-100 pb-3">
+              <div className="p-2 bg-amber-50 text-amber-600 rounded-xl">
+                <Award className="w-5 h-5" />
+              </div>
+              <h2 className="text-base font-black text-gray-900">Thành tích tổng quan</h2>
+            </div>
+
+            <div className="space-y-3">
+              <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-50/60 to-orange-50/20 border border-amber-100/60 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-amber-500 text-white rounded-xl">
+                    <Flame className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 font-semibold">Tổng calo đã đốt</p>
+                    <p className="text-base font-black text-gray-900">1,840 kcal</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-50/60 to-cyan-50/20 border border-blue-100/60 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-blue-500 text-white rounded-xl">
+                    <Clock className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 font-semibold">Tổng thời gian tập</p>
+                    <p className="text-base font-black text-gray-900">320 phút</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-50/60 to-teal-50/20 border border-emerald-100/60 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-emerald-600 text-white rounded-xl">
+                    <CheckCircle2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 font-semibold">Số buổi hoàn thành</p>
+                    <p className="text-base font-black text-gray-900">8 buổi</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setCurrentPage && setCurrentPage('workout')}
+            className="w-full py-3 bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-bold rounded-2xl transition-all flex items-center justify-center gap-2 shadow-md shadow-emerald-800/10"
+          >
+            Tiếp tục luyện tập ngay <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* MODAL CẬP NHẬT CÂN NẶNG HÔM NAY */}
+      {isWeightModalOpen && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-4 shadow-2xl border border-gray-100">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-emerald-50 text-emerald-700 rounded-xl">
+                  <Scale className="w-5 h-5" />
+                </div>
+                <h3 className="text-base font-black text-gray-900">Ghi nhận cân nặng mới</h3>
+              </div>
+              <button
+                onClick={() => setIsWeightModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 text-sm font-bold p-1"
+              >
+                ✕
               </button>
             </div>
 
-            <div className="space-y-3 text-xs">
-              <label className="block font-semibold text-gray-700">Cân nặng mới (kg)</label>
-              <input
-                type="number"
-                step="0.1"
-                placeholder="Ví dụ: 64.5"
-                value={newWeight}
-                onChange={(e) => setNewWeight(e.target.value)}
-                className="w-full px-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-healthy-500"
-              />
-            </div>
+            <form onSubmit={handleSaveWeight} className="space-y-4">
+              <div>
+                <label className="text-xs font-bold text-gray-700 block mb-1.5">
+                  Cân nặng hôm nay (kg)
+                </label>
+                <input
+                  type="number"
+                  step="0.1"
+                  required
+                  placeholder="Ví dụ: 55.5"
+                  value={newWeight}
+                  onChange={(e) => setNewWeight(e.target.value)}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-emerald-600 focus:bg-white transition-all"
+                />
+              </div>
 
-            <div className="flex gap-2 pt-2">
-              <button
-                onClick={() => setShowWeightModal(false)}
-                className="w-full py-2.5 border rounded-xl font-semibold text-gray-600 hover:bg-gray-50 text-xs"
-              >
-                Hủy
-              </button>
-              <button
-                onClick={handleAddWeight}
-                className="w-full py-2.5 bg-healthy-600 text-white rounded-xl font-semibold hover:bg-healthy-700 text-xs shadow-md"
-              >
-                Ghi nhận
-              </button>
-            </div>
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsWeightModalOpen(false)}
+                  className="flex-1 py-3 bg-gray-100 text-gray-600 text-xs font-bold rounded-2xl hover:bg-gray-200 transition-all"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-3 bg-emerald-600 text-white text-xs font-bold rounded-2xl hover:bg-emerald-700 shadow-md shadow-emerald-600/20 transition-all"
+                >
+                  Lưu kết quả
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

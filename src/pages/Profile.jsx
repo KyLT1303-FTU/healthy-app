@@ -1,333 +1,401 @@
 import React, { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
-import { User, Edit, RotateCcw, Check, ArrowRight, Trash2 } from 'lucide-react';
+import {
+  User,
+  ShieldAlert,
+  Scale,
+  Ruler,
+  Target,
+  Save,
+  Check,
+  Activity,
+  Sparkles,
+  HeartPulse,
+  Info,
+  Flame,
+  Zap,
+  CheckCircle2
+} from 'lucide-react';
 
+// Danh sách các vùng chấn thương hỗ trợ cảnh báo
 const INJURY_OPTIONS = [
-  { id: 'knee_pain', name: 'Đau khớp gối' },
-  { id: 'lower_back_pain', name: 'Đau thắt lưng' },
-  { id: 'shoulder_pain', name: 'Đau khớp vai' },
-  { id: 'wrist_pain', name: 'Đau cổ tay' },
-  { id: 'ankle_sprain', name: 'Lật cổ chân' }
+  { id: 'knee_pain', title: 'Đau khớp gối', desc: 'Hạn chế các bài Squat sâu, Lunges, Burpees' },
+  { id: 'lower_back_pain', title: 'Đau lưng / Cột sống', desc: 'Hạn chế gập bụng mạnh, nhấc tạ nặng' },
+  { id: 'shoulder_pain', title: 'Đau / Chấn thương vai', desc: 'Hạn chế hít đất nặng, nâng vai' },
+  { id: 'wrist_pain', title: 'Đau cổ tay', desc: 'Hạn chế chống tay trực tiếp xuống sàn' },
+  { id: 'ankle_sprain', title: 'Trật / Đau cổ chân', desc: 'Hạn chế các bài tập nhảy, Cardio tác động cao' }
 ];
 
 export default function Profile({ setCurrentPage }) {
-  const profileData = useLiveQuery(() => db.profile.get(1), []);
-  const userInjuries = useLiveQuery(() => db.profile_injuries.toArray(), []) || [];
+  // Lấy dữ liệu hồ sơ và chấn thương từ Dexie DB
+  const profile = useLiveQuery(() => db.profile?.get(1), []);
+  const userInjuries =
+    useLiveQuery(() => (db.profile_injuries ? db.profile_injuries.toArray() : Promise.resolve([])), []) || [];
 
-  const [isEditing, setIsEditing] = useState(false);
+  const activeInjuryIds = userInjuries.map((i) => i.injury_id);
+
+  // States lưu thông tin form
   const [formData, setFormData] = useState({
-    name: '',
-    gender: 'female',
-    height: '',
-    weight: '',
-    target_weight: '',
-    goal: 'CHƯA CHỌN',
-    frequency: '3 buổi / tuần',
-    selectedInjuries: []
+    name: 'Người dùng',
+    age: 25,
+    gender: 'nam',
+    height: 170,
+    weight: 65,
+    targetWeight: 60,
+    goal: 'Giảm mỡ & Săn chắc cơ',
+    activityLevel: 'Vừa phải (3-4 buổi/tuần)'
   });
 
+  const [savedSuccess, setSavedSuccess] = useState(false);
+
+  // Đồng bộ dữ liệu từ Dexie DB vào State khi dữ liệu tải xong
   useEffect(() => {
-    if (profileData) {
+    if (profile) {
       setFormData({
-        name: profileData.name || 'Người dùng',
-        gender: profileData.gender || 'female',
-        height: profileData.height || '',
-        weight: profileData.weight || '',
-        target_weight: profileData.target_weight || '',
-        goal: profileData.goal || 'CHƯA CHỌN',
-        frequency: profileData.frequency || '3 buổi / tuần',
-        selectedInjuries: userInjuries.map((i) => i.injury_id)
+        name: profile.name || 'Người dùng',
+        age: profile.age || 25,
+        gender: profile.gender || 'nam',
+        height: profile.height || 170,
+        weight: profile.weight || 65,
+        targetWeight: profile.targetWeight || 60,
+        goal: profile.goal || 'Giảm mỡ & Săn chắc cơ',
+        activityLevel: profile.activityLevel || 'Vừa phải (3-4 buổi/tuần)'
       });
     }
-  }, [profileData, userInjuries]);
+  }, [profile]);
 
-  const handleInputChange = (field, value) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+  // Tính BMI chuẩn Châu Á (Asian BMI)
+  const calculateBMI = () => {
+    const hInMeters = formData.height / 100;
+    if (!hInMeters || hInMeters === 0) return 0;
+    const bmi = formData.weight / (hInMeters * hInMeters);
+    return bmi.toFixed(1);
   };
 
-  const toggleInjury = (id) => {
-    setFormData((prev) => {
-      const exists = prev.selectedInjuries.includes(id);
-      return {
-        ...prev,
-        selectedInjuries: exists
-          ? prev.selectedInjuries.filter((i) => i !== id)
-          : [...prev.selectedInjuries, id]
-      };
-    });
+  const bmiValue = parseFloat(calculateBMI());
+
+  // Phân loại BMI chuẩn Châu Á
+  const getBMICategory = (bmi) => {
+    if (bmi < 18.5) return { label: 'Thiếu cân', color: 'text-blue-500 bg-blue-50 border-blue-200' };
+    if (bmi <= 22.9) return { label: 'Cân đối (Lý tưởng)', color: 'text-emerald-600 bg-emerald-50 border-emerald-200' };
+    if (bmi <= 24.9) return { label: 'Thừa cân nhẹ', color: 'text-amber-600 bg-amber-50 border-amber-200' };
+    return { label: 'Béo phì', color: 'text-rose-600 bg-rose-50 border-rose-200' };
   };
 
+  const bmiCategory = getBMICategory(bmiValue);
+
+  // Xử lý Thay đổi ô nhập liệu
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({
+      ...prev,
+      [name]: name === 'age' || name === 'height' || name === 'weight' || name === 'targetWeight' ? Number(value) : value
+    }));
+  };
+
+  // Lưu hồ sơ vào Dexie DB
   const handleSaveProfile = async (e) => {
     e.preventDefault();
     try {
-      await db.profile.put({
-        id: 1,
-        name: formData.name.trim() || 'Người dùng',
-        gender: formData.gender,
-        height: Number(formData.height) || 0,
-        weight: Number(formData.weight) || 0,
-        target_weight: Number(formData.target_weight) || 0,
-        goal: formData.goal,
-        frequency: formData.frequency,
-        updated_at: new Date().toISOString()
-      });
-
-      await db.profile_injuries.clear();
-      if (formData.selectedInjuries.length > 0) {
-        await db.profile_injuries.bulkAdd(
-          formData.selectedInjuries.map((injId) => ({ injury_id: injId }))
-        );
+      if (db.profile) {
+        await db.profile.put({
+          id: 1,
+          ...formData,
+          bmi: bmiValue,
+          updated_at: new Date().toISOString()
+        });
       }
-
-      setIsEditing(false);
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 3000);
     } catch (err) {
-      console.error('Lỗi lưu hồ sơ:', err);
+      console.error('Lỗi khi lưu hồ sơ:', err);
     }
   };
 
-  const handleResetProfile = async () => {
-    if (window.confirm('Bạn có chắc chắn muốn xóa hồ sơ và làm lại từ đầu?')) {
-      await db.local_app_state.put({ key: 'app_state', onboarding_completed: false });
-      window.location.reload();
+  // Logic Bật/Tắt Chấn thương trong Dexie DB
+  const toggleInjury = async (injury) => {
+    try {
+      if (!db.profile_injuries) return;
+      const existing = await db.profile_injuries.where('injury_id').equals(injury.id).first();
+
+      if (existing) {
+        await db.profile_injuries.delete(existing.id);
+      } else {
+        await db.profile_injuries.add({
+          injury_id: injury.id,
+          title: injury.title,
+          created_at: new Date().toISOString()
+        });
+      }
+    } catch (err) {
+      console.error('Lỗi khi cập nhật chấn thương:', err);
     }
   };
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-6 font-sans">
-      {/* Header */}
-      <div className="flex items-center justify-between bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
-        <div className="flex items-center gap-4">
-          <div className="p-3 bg-emerald-700 text-white rounded-full">
-            <User className="w-6 h-6" />
+    <div className="p-6 max-w-7xl mx-auto space-y-6 font-sans pb-12">
+      {/* 1. HERO BANNER THÔNG TIN TỔNG QUAN */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-950 via-emerald-900 to-teal-950 text-white p-8 shadow-xl border border-emerald-800/40">
+        <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="flex items-center gap-5">
+            <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-emerald-400 to-teal-300 text-emerald-950 font-black text-2xl flex items-center justify-center shadow-lg shadow-emerald-400/20 border-2 border-white/20">
+              {formData.name.charAt(0).toUpperCase()}
+            </div>
+            <div className="space-y-1">
+              <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/20 text-[11px] font-bold">
+                <Sparkles className="w-3 h-3" /> Hồ sơ hội viên
+              </div>
+              <h1 className="text-2xl md:text-3xl font-black">{formData.name}</h1>
+              <p className="text-xs text-emerald-100/80">
+                {formData.gender === 'nam' ? 'Nam' : 'Nữ'} • {formData.age} tuổi • Mục tiêu: <strong className="text-emerald-300">{formData.goal}</strong>
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-extrabold text-gray-900">Hồ sơ của bạn</h1>
-            <p className="text-xs text-gray-400">Quản lý thông tin cá nhân và theo dõi tình trạng sức khỏe của bạn.</p>
+
+          {/* Thẻ BMI Quick View */}
+          <div className="flex items-center gap-4 bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/10 self-start md:self-center">
+            <div className="p-3 bg-emerald-400 text-emerald-950 rounded-xl font-bold">
+              <HeartPulse className="w-6 h-6" />
+            </div>
+            <div>
+              <p className="text-[11px] text-emerald-200 font-medium">Chỉ số BMI</p>
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl font-black text-white">{bmiValue || '--'}</span>
+                <span className="text-xs font-bold text-emerald-300">({bmiCategory.label})</span>
+              </div>
+            </div>
           </div>
-        </div>
-        <div className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-4 py-1.5 rounded-full border border-emerald-100">
-          "Khỏe mạnh là hạnh phúc" ♡
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Profile Info Main Box */}
-        <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-gray-100 shadow-sm space-y-6">
-          <div className="flex items-center justify-between border-b border-gray-100 pb-4">
-            <div className="flex items-center gap-2">
-              <User className="w-4 h-4 text-emerald-600" />
-              <h2 className="text-sm font-bold text-gray-900">Thông tin cá nhân</h2>
+      <form onSubmit={handleSaveProfile} className="space-y-6">
+        {/* 2. KHU VỰC THÔNG TIN CHỈ SỐ CƠ THỂ */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* CỘT LEFT: CHỈ SỐ THỂ TRẠNG */}
+          <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm space-y-5">
+            <div className="flex items-center gap-2.5 pb-4 border-b border-gray-100">
+              <div className="p-2 bg-emerald-50 text-emerald-700 rounded-xl">
+                <Scale className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-sm font-black text-gray-900 uppercase tracking-wider">Chỉ số thể trạng</h2>
+                <p className="text-[11px] text-gray-400">Cập nhật để hệ thống tính toán lượng calo chính xác</p>
+              </div>
             </div>
-            {!isEditing && (
-              <button
-                onClick={() => setIsEditing(true)}
-                className="flex items-center gap-1.5 border border-emerald-600 text-emerald-600 hover:bg-emerald-50 px-4 py-1 rounded-full text-xs font-semibold transition-all"
-              >
-                <Edit className="w-3.5 h-3.5" /> Chỉnh sửa
-              </button>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5 col-span-2">
+                <label className="text-xs font-bold text-gray-700">Họ và Tên</label>
+                <input
+                  type="text"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleChange}
+                  className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-900 focus:outline-none focus:border-emerald-600 focus:bg-white transition-all"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-gray-700">Tuổi</label>
+                <input
+                  type="number"
+                  name="age"
+                  value={formData.age}
+                  onChange={handleChange}
+                  className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-900 focus:outline-none focus:border-emerald-600 focus:bg-white transition-all"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-gray-700">Giới tính</label>
+                <select
+                  name="gender"
+                  value={formData.gender}
+                  onChange={handleChange}
+                  className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-900 focus:outline-none focus:border-emerald-600 focus:bg-white transition-all"
+                >
+                  <option value="nam">Nam</option>
+                  <option value="nu">Nữ</option>
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-gray-700">Chiều cao (cm)</label>
+                <input
+                  type="number"
+                  name="height"
+                  value={formData.height}
+                  onChange={handleChange}
+                  className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-900 focus:outline-none focus:border-emerald-600 focus:bg-white transition-all"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-gray-700">Cân nặng hiện tại (kg)</label>
+                <input
+                  type="number"
+                  name="weight"
+                  value={formData.weight}
+                  onChange={handleChange}
+                  className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-900 focus:outline-none focus:border-emerald-600 focus:bg-white transition-all"
+                  required
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* CỘT RIGHT: MỤC TIÊU TẬP LUYỆN */}
+          <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm space-y-5 flex flex-col justify-between">
+            <div className="space-y-5">
+              <div className="flex items-center gap-2.5 pb-4 border-b border-gray-100">
+                <div className="p-2 bg-emerald-50 text-emerald-700 rounded-xl">
+                  <Target className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-black text-gray-900 uppercase tracking-wider">Mục tiêu & Vận động</h2>
+                  <p className="text-[11px] text-gray-400">Định hướng giáo án tập luyện của bạn</p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-gray-700">Cân nặng mục tiêu (kg)</label>
+                  <input
+                    type="number"
+                    name="targetWeight"
+                    value={formData.targetWeight}
+                    onChange={handleChange}
+                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-900 focus:outline-none focus:border-emerald-600 focus:bg-white transition-all"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-gray-700">Mục tiêu chính</label>
+                  <select
+                    name="goal"
+                    value={formData.goal}
+                    onChange={handleChange}
+                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-900 focus:outline-none focus:border-emerald-600 focus:bg-white transition-all"
+                  >
+                    <option value="Giảm mỡ & Săn chắc cơ">Giảm mỡ & Săn chắc cơ</option>
+                    <option value="Tăng cơ bắp">Tăng cơ bắp (Hypertrophy)</option>
+                    <option value="Tăng sức bền & Cardio">Tăng sức bền & Cardio</option>
+                    <option value="Duy trì vóc dáng">Duy trì vóc dáng khỏe mạnh</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-gray-700">Mức độ vận động hàng ngày</label>
+                  <select
+                    name="activityLevel"
+                    value={formData.activityLevel}
+                    onChange={handleChange}
+                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-900 focus:outline-none focus:border-emerald-600 focus:bg-white transition-all"
+                  >
+                    <option value="Ít vận động (Dân văn phòng)">Ít vận động (Dân văn phòng)</option>
+                    <option value="Vừa phải (3-4 buổi/tuần)">Vừa phải (3-4 buổi/tuần)</option>
+                    <option value="Năng động (5-6 buổi/tuần)">Năng động (5-6 buổi/tuần)</option>
+                    <option value="Vận động viên / Cường độ cao">Vận động viên / Cường độ cao</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Thước đo BMI visual */}
+            <div className="p-4 bg-emerald-50/50 rounded-2xl border border-emerald-100/60 flex items-center justify-between">
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-extrabold text-emerald-800 uppercase">Trạng thái BMI</span>
+                <p className="text-xs font-bold text-gray-900">{bmiCategory.label}</p>
+              </div>
+              <span className={`px-3 py-1 rounded-full text-xs font-black border ${bmiCategory.color}`}>
+                {bmiValue} BMI
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* 3. KHU VỰC KHAI BÁO CHẤN THƯƠNG (INJURY SAFETY CENTER) */}
+        <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm space-y-5">
+          <div className="flex items-center justify-between pb-4 border-b border-gray-100">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-amber-50 text-amber-700 rounded-xl">
+                <ShieldAlert className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-sm font-black text-gray-900 uppercase tracking-wider">
+                  Khai báo vị trí chấn thương / Đau mỏi
+                </h2>
+                <p className="text-[11px] text-gray-400">
+                  Hệ thống sẽ tự động dán nhãn cảnh báo đỏ ở các bài tập gây áp lực lên vùng đau này.
+                </p>
+              </div>
+            </div>
+
+            {activeInjuryIds.length > 0 && (
+              <span className="text-[10px] font-black text-amber-800 bg-amber-100 px-3 py-1 rounded-full">
+                Đang bật {activeInjuryIds.length} cảnh báo
+              </span>
             )}
           </div>
 
-          {!isEditing ? (
-            /* VIEW MODE */
-            <div className="space-y-6">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 bg-gray-50/80 rounded-xl space-y-1">
-                  <span className="text-xs text-gray-400 block font-medium">Giới tính</span>
-                  <span className="text-sm font-bold text-gray-800">
-                    {profileData?.gender === 'male' ? 'Nam' : 'Nữ'}
-                  </span>
-                </div>
-                <div className="p-4 bg-gray-50/80 rounded-xl space-y-1">
-                  <span className="text-xs text-gray-400 block font-medium">Chiều cao</span>
-                  <span className="text-sm font-bold text-gray-800">
-                    {profileData?.height ? `${profileData.height} cm` : '-- cm'}
-                  </span>
-                </div>
-                <div className="p-4 bg-gray-50/80 rounded-xl space-y-1">
-                  <span className="text-xs text-gray-400 block font-medium">Cân nặng hiện tại</span>
-                  <span className="text-sm font-bold text-gray-800">
-                    {profileData?.weight ? `${profileData.weight} kg` : '-- kg'}
-                  </span>
-                </div>
-                <div className="p-4 bg-gray-50/80 rounded-xl space-y-1">
-                  <span className="text-xs text-gray-400 block font-medium">Cân nặng mục tiêu</span>
-                  <span className="text-sm font-bold text-emerald-600">
-                    {profileData?.target_weight ? `${profileData.target_weight} kg` : '-- kg'}
-                  </span>
-                </div>
-                <div className="p-4 bg-gray-50/80 rounded-xl space-y-1">
-                  <span className="text-xs text-gray-400 block font-medium">Mục tiêu tập luyện</span>
-                  <span className="text-sm font-bold text-gray-800">{profileData?.goal || 'CHƯA CHỌN'}</span>
-                </div>
-                <div className="p-4 bg-gray-50/80 rounded-xl space-y-1">
-                  <span className="text-xs text-gray-400 block font-medium">Tần suất tập luyện</span>
-                  <span className="text-sm font-bold text-gray-800">{profileData?.frequency || '3 buổi / tuần'}</span>
-                </div>
-              </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {INJURY_OPTIONS.map((injury) => {
+              const isActive = activeInjuryIds.includes(injury.id);
 
-              {/* Injury Badges */}
-              <div className="p-4 bg-gray-50/80 rounded-xl space-y-2">
-                <span className="text-xs text-gray-400 block font-medium">Chấn thương khai báo</span>
-                <div className="flex flex-wrap gap-2">
-                  {userInjuries.length > 0 ? (
-                    userInjuries.map((item) => {
-                      const name = INJURY_OPTIONS.find((o) => o.id === item.injury_id)?.name || item.injury_id;
-                      return (
-                        <span key={item.id} className="bg-red-100 text-red-600 text-xs font-bold px-3 py-1 rounded-lg">
-                          {name}
-                        </span>
-                      );
-                    })
-                  ) : (
-                    <span className="text-xs text-gray-400">Không có chấn thương nào.</span>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 pt-2">
-                <button
-                  onClick={() => setIsEditing(true)}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-sm transition-all"
-                >
-                  <Edit className="w-3.5 h-3.5" /> Chỉnh sửa hồ sơ
-                </button>
-                <button
-                  onClick={handleResetProfile}
-                  className="flex items-center gap-2 px-4 py-2.5 border border-red-200 text-red-600 hover:bg-red-50 text-xs font-bold rounded-xl transition-all"
-                >
-                  <Trash2 className="w-3.5 h-3.5" /> Xóa hồ sơ và làm lại
-                </button>
-              </div>
-            </div>
-          ) : (
-            /* EDIT FORM MODE */
-            <form onSubmit={handleSaveProfile} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs font-bold text-gray-700 block mb-1">Họ và tên</label>
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => handleInputChange('name', e.target.value)}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-gray-700 block mb-1">Giới tính</label>
-                  <select
-                    value={formData.gender}
-                    onChange={(e) => handleInputChange('gender', e.target.value)}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold"
-                  >
-                    <option value="male">Nam</option>
-                    <option value="female">Nữ</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-gray-700 block mb-1">Chiều cao (cm)</label>
-                  <input
-                    type="number"
-                    value={formData.height}
-                    onChange={(e) => handleInputChange('height', e.target.value)}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-gray-700 block mb-1">Cân nặng hiện tại (kg)</label>
-                  <input
-                    type="number"
-                    value={formData.weight}
-                    onChange={(e) => handleInputChange('weight', e.target.value)}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-gray-700 block mb-1">Cân nặng mục tiêu (kg)</label>
-                  <input
-                    type="number"
-                    value={formData.target_weight}
-                    onChange={(e) => handleInputChange('target_weight', e.target.value)}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-gray-700 block mb-1">Tần suất tập</label>
-                  <input
-                    type="text"
-                    value={formData.frequency}
-                    onChange={(e) => handleInputChange('frequency', e.target.value)}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold"
-                  />
-                </div>
-              </div>
-
-              {/* Injury Toggle */}
-              <div className="space-y-2 pt-2">
-                <label className="text-xs font-bold text-gray-700 block">Cập nhật chấn thương</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {INJURY_OPTIONS.map((item) => {
-                    const isSelected = formData.selectedInjuries.includes(item.id);
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => toggleInjury(item.id)}
-                        className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-between transition-all ${
-                          isSelected ? 'bg-amber-500/10 border-amber-500 text-amber-900' : 'bg-gray-50 border-gray-200 text-gray-600'
-                        }`}
-                      >
-                        <span>{item.name}</span>
-                        {isSelected && <Check className="w-3.5 h-3.5 text-amber-600" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 pt-4">
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-sm transition-all"
-                >
-                  Lưu thay đổi
-                </button>
+              return (
                 <button
                   type="button"
-                  onClick={() => setIsEditing(false)}
-                  className="px-4 py-2.5 bg-gray-100 text-gray-600 text-xs font-bold rounded-xl hover:bg-gray-200"
+                  key={injury.id}
+                  onClick={() => toggleInjury(injury)}
+                  className={`p-4 rounded-2xl border text-left transition-all duration-200 flex flex-col justify-between space-y-2 ${
+                    isActive
+                      ? 'bg-amber-50/80 border-amber-300 shadow-sm'
+                      : 'bg-gray-50/60 border-gray-100 hover:bg-gray-100/60'
+                  }`}
                 >
-                  Hủy
+                  <div className="flex items-center justify-between w-full">
+                    <span className={`text-xs font-black ${isActive ? 'text-amber-950' : 'text-gray-800'}`}>
+                      {injury.title}
+                    </span>
+                    <div
+                      className={`w-5 h-5 rounded-lg flex items-center justify-center transition-all ${
+                        isActive ? 'bg-amber-500 text-white' : 'border border-gray-300 bg-white'
+                      }`}
+                    >
+                      {isActive && <Check className="w-3.5 h-3.5" />}
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-gray-500 leading-relaxed">{injury.desc}</p>
                 </button>
-              </div>
-            </form>
-          )}
+              );
+            })}
+          </div>
         </div>
 
-        {/* Right Sidebar Avatar & Workout Button */}
-        <div className="bg-white p-8 rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center justify-center text-center space-y-5">
-          <div className="w-20 h-20 bg-emerald-100 text-emerald-700 font-extrabold text-2xl rounded-full flex items-center justify-center">
-            {profileData?.name ? profileData.name.charAt(0).toUpperCase() : 'N'}
-          </div>
-
-          <div>
-            <h3 className="text-base font-extrabold text-gray-900">{profileData?.name || 'Người dùng'}</h3>
-            <p className="text-xs text-gray-400 mt-0.5">Thành viên BeHealthy</p>
-          </div>
-
-          <div className="p-4 bg-gray-50/80 rounded-2xl text-xs text-gray-500 italic text-center leading-relaxed">
-            "Cùng nhau xây dựng thói quen lành mạnh và phiên bản tốt hơn mỗi ngày!"
+        {/* 4. ACTION BAR (NÚT LƯU HỒ SƠ) */}
+        <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+          <div className="flex items-center gap-2">
+            {savedSuccess && (
+              <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200 flex items-center gap-1.5 animate-fadeIn">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Đã lưu thông tin hồ sơ thành công!
+              </span>
+            )}
           </div>
 
           <button
-            onClick={() => setCurrentPage && setCurrentPage('workout')}
-            className="w-full py-3.5 bg-emerald-800 hover:bg-emerald-900 text-white text-sm font-bold rounded-2xl transition-all flex items-center justify-center gap-2"
+            type="submit"
+            className="px-8 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-2xl shadow-lg shadow-emerald-600/20 transition-all flex items-center gap-2 ml-auto"
           >
-            Bắt đầu tập luyện ngay <ArrowRight className="w-4 h-4" />
+            <Save className="w-4 h-4" /> Lưu thông tin hồ sơ
           </button>
         </div>
-      </div>
+      </form>
     </div>
   );
 }
