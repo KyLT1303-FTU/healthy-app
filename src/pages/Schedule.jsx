@@ -164,6 +164,29 @@ export default function Schedule({ setCurrentPage, onStartActiveWorkout }) {
     }
   };
 
+  // HÀM XỬ LÝ NÚT TẬP NGAY (Đã sửa lỗi không chuyển trang)
+  const handleStartWorkout = () => {
+    const workoutData = {
+      title: `${selectedDay.dayName}: ${selectedDay.focus}`,
+      exercises:
+        selectedDay.exercises?.length > 0
+          ? selectedDay.exercises
+          : [
+              { id: 'ex_default', title: selectedDay.focus, duration: 45, sets: 3, calories: selectedDay.calories }
+            ]
+    };
+
+    // 1. Kích hoạt ActiveWorkout nếu App.jsx có truyền hàm
+    if (typeof onStartActiveWorkout === 'function') {
+      onStartActiveWorkout(workoutData);
+    }
+
+    // 2. Chuyển hướng sang trang Tập luyện (Workout)
+    if (typeof setCurrentPage === 'function') {
+      setCurrentPage('workout');
+    }
+  };
+
   // Tính toán thống kê tuần
   const completedDaysCount = weeklyData.filter((d) => d.isCompleted).length;
   const totalWeeklyCalories = weeklyData.reduce(
@@ -314,22 +337,11 @@ export default function Schedule({ setCurrentPage, onStartActiveWorkout }) {
               )}
             </button>
 
-            {/* Nút Bắt đầu tập trực tiếp (Kích hoạt ActiveWorkout) */}
+            {/* Nút Bắt đầu tập trực tiếp (Đã sửa kích hoạt & chuyển trang) */}
             {!selectedDay.isRest && (
               <button
-                onClick={() =>
-                  onStartActiveWorkout &&
-                  onStartActiveWorkout({
-                    title: `${selectedDay.dayName}: ${selectedDay.focus}`,
-                    exercises:
-                      selectedDay.exercises?.length > 0
-                        ? selectedDay.exercises
-                        : [
-                            { id: 'ex_default', title: selectedDay.focus, duration: 45, sets: 3, calories: selectedDay.calories }
-                          ]
-                  })
-                }
-                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-xl shadow-md shadow-emerald-600/20 transition-all flex items-center gap-2"
+                onClick={handleStartWorkout}
+                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-xl shadow-md shadow-emerald-600/20 transition-all flex items-center gap-2 active:scale-95"
               >
                 <Play className="w-4 h-4 fill-current" /> Tập ngay
               </button>
