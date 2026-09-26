@@ -14,10 +14,15 @@ export default function Sidebar({ currentPage, setCurrentPage }) {
     <aside className="w-64 bg-white border-r border-gray-200 flex flex-col justify-between h-screen sticky top-0">
       <div>
         {/* Logo */}
-        <div className="p-6 flex items-center gap-3 border-b border-gray-100">
-          <div className="w-10 h-10 rounded-xl bg-healthy-600 flex items-center justify-center text-white font-bold text-xl shadow-md">
-            BH
-          </div>
+        <div 
+          onClick={() => setCurrentPage('dashboard')}
+          className="p-6 flex items-center gap-3 border-b border-gray-100 cursor-pointer"
+        >
+          <img 
+            src="/favicon.png" 
+            alt="BeHealthy Logo" 
+            className="w-10 h-10 object-contain hover:scale-105 transition-transform"
+          />
           <span className="text-xl font-bold text-gray-800 tracking-tight">BeHealthy</span>
         </div>
 
